@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-	<title>View your WordPress.org Plugin Stats</title>
+	<title>Estadísticas de plugins en WordPress.org</title>
 	<meta charset="utf-8">
 	<meta http-equiv="X-UA-Compatible" content="IE=Edge">
 	<meta name="viewport" content="initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -13,18 +13,17 @@
 </head>
 <body>
 
-	<div class="w-100 bg-blue pt2 pb4 ph3 pa5-ns">
-
+	<div class="w-100 pt2 pb4 ph3 pa5-ns" style="background-color: #29AAE3;">
 		<div class="center tc">
 			<h1 class="f2 f1-ns fw3 lh-title white mv3 mv2-ns">Estadísticas de plugins en WordPress.org</h1>
-			<h3 class="f5 f4-ns fw3 lh-subtitle black-80 mt2 mb4">Introduce el "slug-del-plugin" y presiona "enter" para ver las estadísticas.</h3>
+			<h3 class="f5 f4-ns fw3 lh-subtitle black-80 mt2 mb4">Introduce el "slug-del-plugin" y nº de días (1-90) para ver las estadísticas.</h3>
 			<form id="search-form">
-				<input id="search-input" type="text" placeholder="ejemplo: simple-code-block" class="input-reset pv3 b1 b--black-60 o0 ph3 br2 w-100 w-60-ns f4 fw3 black-80" value=""/>
+				<input id="search-input" type="text" placeholder="ejemplo: simple-code-block" class="input-reset pv3 b1 b--black-60 o0 ph3 br2 w-100 w-40-ns fw3 black-80" value=""/>
+				<input id="search-quantity" type="number" name="quantity" min="10" max="90" step="1" value="90" class="input-reset pv3 b1 b--black-60 o0 ph3 br2 4 fw3 black-80">
+				<input type="submit" value="Ver resultados" style="cursor: pointer;" class="pv3 b1 b--black-60 o0 ph3 br2 4 fw3 black-80">
 			</form>
 		</div>
-
 	</div>
-
 	<div class="plugin pv3 w-80 center">
 		<div class="plugin-title-wrap"></div>
 		<div class="cf f6">
@@ -36,7 +35,6 @@
 			</div>
 		</div>
 	</div>
-
 	<div class="chart-container w-80 center mb4">
 		<canvas id="chart" class="" width="100%" height="100%"></canvas>
 	</div>
@@ -48,12 +46,12 @@
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.18.1/moment.min.js"></script>
 
 	<script type="text/template" id="plugin-title">
-	  <h4 class="mb0 f2 fw3 black-80 lh-copy tc">
-	    <%= plugin.name %>
-	  </h4>
-	  <div class="tc fw3 mb5">
-	    <p class="mt0">Ver en el <a class="blue" target="_blank" href="https://wordpress.org/plugins/<%= plugin.slug %>">Repositorio WordPress</a>.</p>
-	  </div>
+		<h4 class="mb0 f2 fw3 black-80 lh-copy tc"><%= plugin.name %></h4>
+		<div class="tc fw3 mb5"> 
+			<img src="<%= plugin.banners.high ? plugin.banners.high : plugin.icons['2x'] %>" alt="<%= plugin.name %>" style="margin: 30px;">  
+			<p class="mt0"><%= plugin.short_description %></p>
+	    	<p class="mt0">Ver en el <a class="blue" target="_blank" href="https://wordpress.org/plugins/<%= plugin.slug %>">Repositorio WordPress</a></p>
+	 	</div>
 	</script>
 
 	<script type="text/template" id="plugin-historical-summary">
@@ -132,6 +130,26 @@
 				"*actions": "defaultRoute"
 			}
 		});
+
+		/**
+		* JavaScript Get URL Parameter
+		* 
+		* @param String prop The specific URL parameter you want to retreive the value for
+		* @return String|Object If prop is provided a string value is returned, otherwise an object of all properties is returned
+		*/
+		function getUrlParams( prop ) {
+			var params = {};
+			var search = decodeURIComponent( window.location.href.slice( window.location.href.indexOf( '?' ) + 1 ) );
+			var definitions = search.split( '&' );
+
+			definitions.forEach( function( val, key ) {
+				var parts = val.split( '=', 2 );
+				params[ parts[ 0 ] ] = parts[ 1 ];
+			} );
+
+			return ( prop && prop in params ) ? params[ prop ] : params;
+		}
+
 		// Initiate the router
 		var app_router = new AppRouter;
 		app_router.on('route:getPlugin', function(slug) {
@@ -141,6 +159,9 @@
 			$( '.plugin .plugin-historical-summary-wrap').html('');
 			$( '.plugin .plugin-details-wrap').html('');
 			$( '#search-input' ).val( slug );
+			var search_quantity = getUrlParams( 'quantity').split('#');
+			search_quantity = parseInt( search_quantity[0] );
+			$( '#search-quantity' ).val( search_quantity );
 			// Download summary
 			function download_summary() {
 				$.ajax({
@@ -149,6 +170,7 @@
 					cache: false,
 					dataType: 'jsonp',
 					success : function(response) {
+						//console.log('estadistica', response);
 						var template = _.template( $( '#plugin-historical-summary' ).html(), { plugin: response } );
 						$( '.plugin .plugin-historical-summary-wrap' ).append( template );
 					}
@@ -160,8 +182,9 @@
 				cache: false,
 				dataType: 'json',
 				success : function(response) {
+					//console.log('respuesta', response);
 					download_summary();
-					plugin_chart();
+					plugin_chart( search_quantity + 1 );
 					$( '.plugin-waiting-wrap' ).remove();
 					var template = _.template( $( '#plugin-title' ).html(), { plugin: response } );
 					$( '.plugin .plugin-title-wrap' ).html( template );
@@ -173,13 +196,14 @@
 					$( '.plugin' ).append( template );
 				}
 			});
-			function plugin_chart() {
+			function plugin_chart( limit ) {
 				$.ajax({
-					url: 'https://api.wordpress.org/stats/plugin/1.0/downloads.php?slug=' + slug + '&limit=30',
+					url: 'https://api.wordpress.org/stats/plugin/1.0/downloads.php?slug=' + slug + '&limit=' + limit,
 					type: "GET",
 					cache: false,
 					dataType: "jsonp",
 					success : function(response) {
+						//console.log('grafico', response);
 						if ( 1 === _.keys( response ).length && 0 === response[ Object.keys( response )[0] ] ) {
 						} else {
 							$( '.chart-container' ).append( '<canvas id="chart" class="" width="100%" height="100%"></canvas>' );
@@ -189,7 +213,7 @@
 							var keys = [];
 							var values = [];
 							_.each( response, function( val, key ) {
-								formattedKey = new Date( key ).toLocaleDateString( 'en-gb', {
+								formattedKey = new Date( key ).toLocaleDateString( 'es-ES', {
 									day : 'numeric',
 									month : 'short',
 									timeZone : 'UTC'
@@ -206,7 +230,7 @@
 										label: 'nº de descargas',
 										data: values,
 										borderWidth: 1,
-										backgroundColor: '#357edd'
+										backgroundColor: '#29AAE3'
 									}]
 								},
 								options: {
